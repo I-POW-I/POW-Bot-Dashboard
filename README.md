@@ -1,6 +1,6 @@
 # 24/7 POW Bot Dashboard
 
-A production-grade Next.js 14 control panel for the [24/7 POW Bot](https://github.com/I-POW-I/247-Pow-Bot) — a Discord bot that parks in a voice channel 24/7, logs voice activity, tracks VC time, and sends streamer/game alerts.
+A production-grade Next.js 14 control panel for the [24/7 POW Bot](https://github.com/I-POW-I/Pow-Bot) — a Discord bot that parks in a voice channel 24/7, logs voice activity, tracks VC time, and sends streamer/game alerts.
 
 Built with **Next.js 14 (App Router)**, **TypeScript**, **Tailwind CSS**, **shadcn/ui**, **Recharts**, and **Supabase**.
 
