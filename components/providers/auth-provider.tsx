@@ -58,17 +58,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // If Discord OAuth2 is configured, redirect to the OAuth2 signin route
       // which will redirect to Discord and back to the callback.
       // Falls back to demo auth if OAuth2 env vars are not set.
-      const hasOAuth =
-        process.env.NEXT_PUBLIC_DISCORD_OAUTH === 'true' ||
-        (typeof window !== 'undefined' &&
-          window.location.hostname !== 'localhost');
-
-      if (hasOAuth && process.env.NEXT_PUBLIC_USE_DISCORD_OAUTH === 'true') {
+      if (process.env.NEXT_PUBLIC_USE_DISCORD_OAUTH === 'true') {
         window.location.href = '/api/auth/signin';
         return;
       }
 
-      // Demo auth fallback
       const u = await signInDemoUser();
       setUser(u);
     } finally {
