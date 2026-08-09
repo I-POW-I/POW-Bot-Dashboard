@@ -1,25 +1,52 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  '';
+const PLACEHOLDER_URL = 'https://placeholder.supabase.co';
+const PLACEHOLDER_KEY = 'placeholder-anon-key';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    '[supabase] Missing env vars — dashboard will not be able to read/write data.'
+function resolveUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    PLACEHOLDER_URL
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+function resolveAnonKey(): string {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    PLACEHOLDER_KEY
+  );
+}
 
-export const supabaseServer = () => {
+let browserClient: SupabaseClient | null = null;
+
+export const supabase: SupabaseClient = new Proxy(
+  {} as SupabaseClient,
+  {
+    get(_target, prop) {
+      if (!browserClient) {
+        const url = resolveUrl();
+        const key = resolveAnonKey();
+        if (url === PLACEHOLDER_URL || key === PLACEHOLDER_KEY) {
+          console.warn(
+            '[supabase] Missing env vars — dashboard will not be able to read/write data.'
+          );
+        }
+        browserClient = createClient(url, key, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+          },
+        });
+      }
+      const value = (browserClient as unknown as Record<string | symbol, unknown>)[prop];
+      return typeof value === 'function' ? value.bind(browserClient) : value;
+    },
+  }
+);
+
+export const supabaseServer = (): SupabaseClient => {
   const url = process.env.SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (!url || !serviceKey) {
