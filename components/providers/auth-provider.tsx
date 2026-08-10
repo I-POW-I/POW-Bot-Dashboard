@@ -52,13 +52,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refresh]);
 
-const signIn = useCallback(async () => {
+  const signIn = useCallback(async () => {
     setLoading(true);
     try {
-      // Force the browser to bypass environmental checks and go straight to Discord auth
-      window.location.href = '/api/auth/signin';
-    } catch (error) {
-      console.error("Navigation redirect failed:", error);
+      // If Discord OAuth2 is configured, redirect to the OAuth2 signin route
+      // which will redirect to Discord and back to the callback.
+      // Falls back to demo auth if OAuth2 env vars are not set.
+      if (process.env.NEXT_PUBLIC_USE_DISCORD_OAUTH === 'true') {
+        window.location.href = '/api/auth/signin';
+        return;
+      }
+
+      const u = await signInDemoUser();
+      setUser(u);
+    } finally {
       setLoading(false);
     }
   }, []);
