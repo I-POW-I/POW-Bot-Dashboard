@@ -5,6 +5,15 @@ import { OWNER_DISCORD_ID } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+// Use the public dashboard URL so redirects work behind a proxy/Discloud
+function getBaseUrl(req: NextRequest): string {
+  return (
+    process.env.NEXT_PUBLIC_DASHBOARD_URL ||
+    process.env.DISCORD_REDIRECT_URI?.replace('/api/auth/callback', '') ||
+    `${req.headers.get('x-forwarded-proto') || 'https'}://${req.headers.get('host')}`
+  );
+}
+
 const DISCORD_API = 'https://discord.com/api/v10';
 
 interface DiscordTokenResponse {
@@ -45,11 +54,11 @@ export async function GET(req: NextRequest) {
   const storedState = cookieStore.get('oauth_state')?.value;
 
   if (error) {
-    return NextResponse.redirect(new URL(`/?error=${encodeURIComponent(error)}`, req.url));
+    return NextResponse.redirect(new URL(`/?error=${encodeURIComponent(error)}`, getBaseUrl(req)));
   }
 
   if (!code || !state || !storedState || state !== storedState) {
-    return NextResponse.redirect(new URL('/?error=invalid_state', req.url));
+    return NextResponse.redirect(new URL('/?error=invalid_state', getBaseUrl(req)));
   }
 
   cookieStore.delete('oauth_state');
@@ -59,7 +68,7 @@ export async function GET(req: NextRequest) {
   const redirectUri = process.env.DISCORD_REDIRECT_URI;
 
   if (!clientId || !clientSecret || !redirectUri) {
-    return NextResponse.redirect(new URL('/?error=oauth_not_configured', req.url));
+    return NextResponse.redirect(new URL('/?error=oauth_not_configured', getBaseUrl(req)));
   }
 
   const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
@@ -76,7 +85,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     console.error('[oauth] token exchange failed', tokenRes.status);
-    return NextResponse.redirect(new URL('/?error=token_exchange_failed', req.url));
+    return NextResponse.redirect(new URL('/?error=token_exchange_failed', getBaseUrl(req)));
   }
 
   const tokenData = (await tokenRes.json()) as DiscordTokenResponse;
@@ -88,7 +97,7 @@ export async function GET(req: NextRequest) {
 
   if (!userRes.ok) {
     console.error('[oauth] user fetch failed', userRes.status);
-    return NextResponse.redirect(new URL('/?error=user_fetch_failed', req.url));
+    return NextResponse.redirect(new URL('/?error=user_fetch_failed', getBaseUrl(req)));
   }
 
   const discordUser = (await userRes.json()) as DiscordUserResponse;
@@ -126,13 +135,13 @@ export async function GET(req: NextRequest) {
     });
     if (createErr) {
       console.error('[oauth] failed to create supabase user', createErr.message);
-      return NextResponse.redirect(new URL('/?error=user_creation_failed', req.url));
+      return NextResponse.redirect(new URL('/?error=user_creation_failed', getBaseUrl(req)));
     }
     supabaseUserId = newUser.user.id;
   }
 
   if (!supabaseUserId) {
-    return NextResponse.redirect(new URL('/?error=no_user_id', req.url));
+    return NextResponse.redirect(new URL('/?error=no_user_id', getBaseUrl(req)));
   }
 
   const isOwner = discordUser.id === OWNER_DISCORD_ID;
@@ -204,5 +213,5 @@ export async function GET(req: NextRequest) {
   const firstGuildId = userGuilds[0]?.id || '';
   const redirectUrl = firstGuildId ? `/dashboard/${firstGuildId}` : '/dashboard';
 
-  return NextResponse.redirect(new URL(redirectUrl, req.url));
+  return NextResponse.redirect(new URL(redirectUrl, getBaseUrl(req)));
 }
