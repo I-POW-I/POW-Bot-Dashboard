@@ -31,18 +31,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      await refresh();
-      if (mounted) setLoading(false);
-    })();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        (async () => {
+    // Wait for INITIAL_SESSION so magic-link tokens in the URL hash are
+    // processed before we decide the user is logged out and redirect to /.
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      if (event === 'INITIAL_SESSION') {
+        // Supabase has finished reading localStorage + any URL hash tokens.
+        if (session) {
           await refresh();
-        })();
+        }
+        setLoading(false);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        await refresh();
+        setLoading(false);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setLoading(false);
       }
     });
 
