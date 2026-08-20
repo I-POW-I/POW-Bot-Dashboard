@@ -212,6 +212,24 @@ export async function GET(req: NextRequest) {
 
   const firstGuildId = userGuilds[0]?.id || '';
   const redirectUrl = firstGuildId ? `/dashboard/${firstGuildId}` : '/dashboard';
+  const finalUrl = new URL(redirectUrl, getBaseUrl(req)).toString();
 
-  return NextResponse.redirect(new URL(redirectUrl, getBaseUrl(req)));
+  // Generate a Supabase magic link so the browser gets a proper session.
+  // The service role created the user but can't set browser cookies directly.
+  // A magic link lets Supabase handle the session handoff cleanly.
+  const { data: linkData, error: linkError } = await sb.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+    options: { redirectTo: finalUrl },
+  });
+
+  if (linkError || !linkData?.properties?.action_link) {
+    console.error('[oauth] magic link generation failed', linkError?.message);
+    // Fall back to a direct redirect — user may need to click "Open Dashboard"
+    // which will use the demo sign-in flow as a fallback
+    return NextResponse.redirect(new URL(finalUrl));
+  }
+
+  // Redirect to Supabase magic link → it sets session cookies → redirects to dashboard
+  return NextResponse.redirect(linkData.properties.action_link);
 }
