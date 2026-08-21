@@ -38,22 +38,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
 
       if (event === 'INITIAL_SESSION') {
-        // Supabase has finished reading localStorage + any URL hash tokens.
-        if (session) {
-          await refresh();
-        }
-        setLoading(false);
+        if (session) await refresh();
+        if (mounted) setLoading(false);
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         await refresh();
-        setLoading(false);
+        if (mounted) setLoading(false);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     });
 
+    // Safety fallback — if INITIAL_SESSION never fires within 4s, unblock the UI
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    }, 4000);
+
     return () => {
       mounted = false;
+      clearTimeout(timeout);
       sub.subscription.unsubscribe();
     };
   }, [refresh]);
