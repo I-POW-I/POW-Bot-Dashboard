@@ -1,14 +1,21 @@
+import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser, requireGuildAdmin } from '@/lib/server-auth';
 import { supabaseServer } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
+function isBotToken(req: NextRequest, token: string): boolean {
+  const authHeader = req.headers.get('authorization') || '';
+  const a = Buffer.from(authHeader);
+  const b = Buffer.from(`Bearer ${token}`);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function GET(req: NextRequest) {
   const token = process.env.BOT_API_TOKEN;
   if (token) {
-    const authHeader = req.headers.get('authorization');
-    if (authHeader === `Bearer ${token}`) {
+    if (isBotToken(req, token)) {
       const { searchParams } = new URL(req.url);
       const status = searchParams.get('status') || 'pending';
       const limit = parseInt(searchParams.get('limit') || '50', 10);
