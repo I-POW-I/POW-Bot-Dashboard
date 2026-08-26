@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase';
+import { requireBotToken } from '@/lib/bot-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,16 +9,8 @@ export const dynamic = 'force-dynamic';
 // Requires BOT_API_TOKEN for authentication.
 // Body: { bot_status: {...}, guild_configs: [...], vc_sessions: [...] }
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  const token = process.env.BOT_API_TOKEN;
-
-  if (!token) {
-    return NextResponse.json({ error: 'BOT_API_TOKEN not configured' }, { status: 500 });
-  }
-
-  if (authHeader !== `Bearer ${token}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = requireBotToken(req);
+  if (authError) return authError;
 
   const body = await req.json().catch(() => ({}));
   const sb = supabaseServer();
