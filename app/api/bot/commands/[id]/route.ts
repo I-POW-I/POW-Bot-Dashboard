@@ -1,90 +1,52 @@
-import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser, requireGuildAdmin } from '@/lib/server-auth';
 import { supabaseServer } from '@/lib/supabase';
+import { requireBotToken } from '@/lib/bot-auth';
 
 export const dynamic = 'force-dynamic';
 
-function isBotToken(req: NextRequest, token: string): boolean {
-  const authHeader = req.headers.get('authorization') || '';
-  const a = Buffer.from(authHeader);
-  const b = Buffer.from(`Bearer ${token}`);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+// PATCH /api/bot/commands/[id]
+// Called by the bot to mark a command as processed (completed or failed).
+// Requires BOT_API_TOKEN for authentication.
+// Body: { status: 'completed' | 'failed', error_message?: string }
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const authError = requireBotToken(req);
+  if (authError) return authError;
 
-export async function GET(req: NextRequest) {
-  const token = process.env.BOT_API_TOKEN;
-  if (token) {
-    if (isBotToken(req, token)) {
-      const { searchParams } = new URL(req.url);
-      const status = searchParams.get('status') || 'pending';
-      const limit = parseInt(searchParams.get('limit') || '50', 10);
-      const sb = supabaseServer();
-      const { data, error } = await sb
-        .from('bot_commands')
-        .select('*')
-        .eq('status', status)
-        .order('created_at', { ascending: true })
-        .limit(limit);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ commands: data || [] });
-    }
+  const id = parseInt(params.id, 10);
+  if (!Number.isFinite(id)) {
+    return NextResponse.json({ error: 'Invalid command id' }, { status: 400 });
   }
-
-  const authResult = await requireUser(req);
-  if (authResult instanceof NextResponse) return authResult;
-
-  const sb = supabaseServer();
-  const { data, error } = await sb
-    .from('bot_commands')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(50);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ commands: data || [] });
-}
-
-export async function POST(req: NextRequest) {
-  const authResult = await requireUser(req);
-  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json().catch(() => ({}));
-  const { guild_id, command, payload } = body;
+  const { status, error_message } = body;
 
-  if (!guild_id || !command) {
+  if (!status || !['completed', 'failed', 'processing'].includes(status)) {
     return NextResponse.json(
-      { error: 'guild_id and command are required' },
-      { status: 400 }
-    );
-  }
-
-  if (typeof authResult !== 'object' || 'error' in authResult) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const guildCheck = await requireGuildAdmin(req, guild_id);
-  if (guildCheck instanceof NextResponse) return guildCheck;
-
-  const allowedCommands = ['restart', 'presence', 'sync', 'refresh_status'];
-  if (!allowedCommands.includes(command)) {
-    return NextResponse.json(
-      { error: `Unknown command: ${command}` },
+      { error: 'status must be completed, failed, or processing' },
       { status: 400 }
     );
   }
 
   const sb = supabaseServer();
+  const updates: Record<string, unknown> = {
+    status,
+    processed_at: status === 'completed' || status === 'failed' ? new Date().toISOString() : null,
+  };
+  if (error_message) updates.error_message = String(error_message).slice(0, 2000);
+
   const { data, error } = await sb
     .from('bot_commands')
-    .insert({
-      guild_id,
-      command,
-      payload: payload || {},
-      status: 'pending',
-    })
+    .update(updates)
+    .eq('id', id)
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
   return NextResponse.json({ ok: true, command: data });
 }
