@@ -16,6 +16,24 @@ const DEMO_GUILD_IDS = ['7381929384738291', '4829103847562019'];
 
 const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 
+// Demo login is a client-side function running against the public anon key —
+// there is no server in between to gate it. Previously it defaulted to
+// OWNER_DISCORD_ID when called with no arguments (exactly how the landing
+// page called it), meaning ANYONE could open the browser console and call
+// signInDemoUser() to sign in as the bot owner, using a predictable
+// email/password pattern derived from a publicly-known ID — this repo is
+// public, so that pattern is public too.
+//
+// Two independent guards now apply, and BOTH matter — this function is
+// reachable directly regardless of what the UI does:
+//   1. It refuses to run at all unless NEXT_PUBLIC_ALLOW_DEMO_LOGIN=true is
+//      explicitly set (intended for local dev only — never set this in
+//      production).
+//   2. Even when enabled, it can NEVER grant 'owner' or 'super_admin' role,
+//      no matter what discordId is passed in — demo accounts are always
+//      capped at 'admin' / regular app access.
+const DEMO_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ALLOW_DEMO_LOGIN === 'true';
+
 function avatarUrl(discordId: string, avatar: string | null): string {
   if (!avatar) return DEFAULT_AVATAR;
   if (avatar.startsWith('http')) return avatar;
@@ -29,6 +47,12 @@ export async function signInDemoUser(opts?: {
   avatar?: string | null;
   globalName?: string | null;
 }): Promise<SessionUser> {
+  if (!DEMO_LOGIN_ENABLED) {
+    throw new Error(
+      'Demo login is disabled. Set up real Discord OAuth (NEXT_PUBLIC_USE_DISCORD_OAUTH=true) — demo login only runs when NEXT_PUBLIC_ALLOW_DEMO_LOGIN=true is explicitly set, which should never be the case in production.'
+    );
+  }
+
   const discordId = opts?.discordId || OWNER_DISCORD_ID;
   const username  = opts?.username  || OWNER_DISCORD_USERNAME;
   const avatar    = opts?.avatar ?? null;
@@ -50,8 +74,11 @@ export async function signInDemoUser(opts?: {
   const supabaseUid = data.user?.id;
   if (!supabaseUid) throw new Error('No supabase user id after auth');
 
-  const isOwner: boolean   = discordId === OWNER_DISCORD_ID;
-  const globalRole: GlobalRole = isOwner ? 'owner' : 'admin';
+  // Demo accounts can NEVER be owner/super_admin, even if discordId happens
+  // to match OWNER_DISCORD_ID — that matching is exactly the exploit this
+  // guards against.
+  const isOwner: boolean   = false;
+  const globalRole: GlobalRole = 'admin';
 
   const { error: upsertErr } = await supabase.from('dashboard_users').upsert(
     {
