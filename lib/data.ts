@@ -21,6 +21,8 @@ export async function fetchGuildConfig(guildId: string): Promise<GuildConfig | n
   return data as GuildConfig | null;
 }
 
+const STALE_AFTER_MS = 2 * 60 * 1000; // heartbeat pushes every 60s — 2 missed = stale
+
 export async function fetchBotStatus(): Promise<BotStatus | null> {
   const { data, error } = await supabase
     .from('bot_status')
@@ -31,7 +33,16 @@ export async function fetchBotStatus(): Promise<BotStatus | null> {
     console.warn('[data] fetchBotStatus', error.message);
     return null;
   }
-  return data as BotStatus | null;
+  if (!data) return null;
+
+  const status = data as BotStatus;
+  const ageMs = status.updated_at ? Date.now() - new Date(status.updated_at).getTime() : Infinity;
+  const stale = ageMs > STALE_AFTER_MS;
+
+  // If the bot hasn't heartbeated recently, don't trust a lingering `online: true`
+  // from before a crash/restart — every page reads bot status through this one
+  // function, so fixing it here fixes the "Connected" badge everywhere at once.
+  return { ...status, online: stale ? false : status.online, stale };
 }
 
 export async function fetchAuditLog(
