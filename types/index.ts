@@ -134,6 +134,11 @@ export interface BlacklistEntry {
   created_at: string;
 }
 
+export interface DashboardPresence {
+  type: 'Playing' | 'Watching' | 'Listening' | 'Custom';
+  text: string;
+}
+
 export interface BotStatus {
   id: number;
   online: boolean;
@@ -145,7 +150,11 @@ export interface BotStatus {
   total_members: number;
   presence_activity: string | null;
   presence_type: string | null;
+  presence_mode: 'rotate' | 'fixed';
+  presence_list: DashboardPresence[];
   updated_at: string;
+  /** Derived client-side by fetchBotStatus() — true if no heartbeat in >2 min. */
+  stale?: boolean;
 }
 
 export interface DiscordGuild {
