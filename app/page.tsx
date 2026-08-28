@@ -17,6 +17,9 @@ import {
 import { useAuth } from '@/components/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import { fetchBotStatus } from '@/lib/data';
+import type { BotStatus } from '@/types';
 
 const FEATURES = [
   {
@@ -54,18 +57,32 @@ const FEATURES = [
 export default function Home() {
   const { user, loading, signIn } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [signingIn, setSigningIn] = useState(false);
+  const [status, setStatus] = useState<BotStatus | null>(null);
 
   useEffect(() => {
+    // Send signed-in users to server selection, not straight into whichever
+    // guild happened to be first in their list.
     if (!loading && user) {
-      router.replace(`/dashboard/${user.guilds[0]?.guildId || ''}`);
+      router.replace('/dashboard');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    fetchBotStatus().then(setStatus);
+  }, []);
 
   const handleSignIn = async () => {
     setSigningIn(true);
     try {
       await signIn();
+    } catch (err) {
+      toast({
+        title: 'Sign-in failed',
+        description: err instanceof Error ? err.message : 'Something went wrong.',
+        variant: 'destructive',
+      });
     } finally {
       setSigningIn(false);
     }
@@ -119,10 +136,16 @@ export default function Home() {
               className="mb-6 gap-1.5 border-primary/30 bg-primary/5 py-1.5 text-primary"
             >
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-success" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+                {status?.online && (
+                  <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-success" />
+                )}
+                <span
+                  className={`relative inline-flex h-2 w-2 rounded-full ${status?.online ? 'bg-success' : 'bg-destructive'}`}
+                />
               </span>
-              Bot online · 2 active connections
+              {status?.online
+                ? `Bot online · ${status.active_connections} active connection${status.active_connections === 1 ? '' : 's'}`
+                : 'Bot offline'}
             </Badge>
 
             <h1 className="max-w-4xl text-5xl font-bold leading-[1.05] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
@@ -146,7 +169,7 @@ export default function Home() {
                 <ArrowRight className="h-5 w-5" />
               </Button>
               <span className="text-sm text-muted-foreground">
-                No account? A demo session is created automatically.
+                Sign in with the Discord account that manages your server.
               </span>
             </div>
 
