@@ -1,0 +1,45 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# ── Next.js build output ──────────────────────────────────────────────────────
+/.next/
+/out/
+/build
+
+# ── Env files — NEVER commit real secrets, this repo is public ───────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# ── Vercel / deployment ───────────────────────────────────────────────────────
+.vercel
+
+# ── Discloud (per-app instance ID, not sensitive but keep local overrides out) ─
+discloud.config
+
+# ── TypeScript ─────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Testing / coverage ─────────────────────────────────────────────────────────
+/coverage
+
+# ── Misc ────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Editor ──────────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea
