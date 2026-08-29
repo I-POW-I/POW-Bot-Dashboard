@@ -5,13 +5,14 @@ import { useParams } from 'next/navigation';
 import {
   CheckCircle2,
   Mail,
+  Palette,
   ShieldCheck,
   Sparkles,
   UserPlus,
 } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
 import { fetchGuildConfig, insertAuditLog } from '@/lib/data';
-import type { GuildConfig } from '@/types';
+import type { GuildConfig, WelcomeCardConfig } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -28,19 +29,10 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
-const DEMO_TEXT_CHANNELS = [
-  { id: '9182736451029390', name: 'welcome' },
-  { id: '9182736451029391', name: 'goodbye' },
-  { id: '9182736451029388', name: 'general' },
-  { id: '9182736451029389', name: 'bot-commands' },
-];
+interface RealChannel { id: string; name: string; position: number }
+interface RealRole { id: string; name: string; color: string; position: number }
 
-const DEMO_ROLES = [
-  { id: '9182736451029392', name: 'Verified' },
-  { id: '9182736451029394', name: 'Member' },
-  { id: '9182736451029396', name: 'VIP' },
-  { id: '9182736451029397', name: 'Booster' },
-];
+const ACCENT_PRESETS = ['#5865F2', '#57F287', '#FEE75C', '#EB459E', '#ED4245', '#747F8D'];
 
 export default function WelcomeVerifyPage() {
   const params = useParams<{ guildId: string }>();
@@ -53,11 +45,42 @@ export default function WelcomeVerifyPage() {
   const [verifyTitle, setVerifyTitle] = useState('Click it... I know you want too.');
   const [verifyDesc, setVerifyDesc] = useState('');
 
+  const [channels, setChannels] = useState<RealChannel[]>([]);
+  const [roles, setRoles] = useState<RealRole[]>([]);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+
+  // Draft card style — separate from `config` so the preview updates
+  // instantly as you adjust controls, without a DB write per click. "Save
+  // card style" commits it via updateConfig, same as everything else here.
+  const [cardDraft, setCardDraft] = useState<WelcomeCardConfig>({
+    nameMode: 'nickname',
+    accentColor: null,
+    avatarPosition: 'center',
+    textAlign: 'center',
+  });
+  const [cardDraftDirty, setCardDraftDirty] = useState(false);
+  const [previewNonce, setPreviewNonce] = useState(0);
+
   useEffect(() => {
     if (!user || !params?.guildId) return;
     (async () => {
-      const c = await fetchGuildConfig(params.guildId);
+      const [c, chRes, roleRes] = await Promise.all([
+        fetchGuildConfig(params.guildId),
+        fetch(`/api/bot/guilds/${params.guildId}/channels`).then((r) => r.json()).catch(() => ({ channels: [], error: 'Request failed' })),
+        fetch(`/api/bot/guilds/${params.guildId}/roles`).then((r) => r.json()).catch(() => ({ roles: [], error: 'Request failed' })),
+      ]);
       setConfig(c);
+      setChannels(chRes.channels || []);
+      setRoles(roleRes.roles || []);
+      setChannelsError(chRes.error || roleRes.error || null);
+      if (c?.welcome_card_config && Object.keys(c.welcome_card_config).length) {
+        setCardDraft({
+          nameMode: c.welcome_card_config.nameMode || 'nickname',
+          accentColor: c.welcome_card_config.accentColor || null,
+          avatarPosition: c.welcome_card_config.avatarPosition || 'center',
+          textAlign: c.welcome_card_config.textAlign || 'center',
+        });
+      }
       setLoading(false);
     })();
   }, [user, params?.guildId]);
@@ -88,6 +111,17 @@ export default function WelcomeVerifyPage() {
     }
     setBusy(false);
     return true;
+  };
+
+  const saveCardStyle = async () => {
+    const ok = await updateConfig(
+      { welcome_card_config: cardDraft },
+      'Updated welcome/leave card style'
+    );
+    if (ok) {
+      setCardDraftDirty(false);
+      toast({ title: 'Card style saved' });
+    }
   };
 
   if (loading) {
@@ -138,7 +172,7 @@ export default function WelcomeVerifyPage() {
                     v === '__none'
                       ? 'Cleared welcome channel'
                       : `Set welcome channel to #${
-                          DEMO_TEXT_CHANNELS.find((c) => c.id === v)?.name
+                          channels.find((c) => c.id === v)?.name
                         }`
                   )
                 }
@@ -149,7 +183,7 @@ export default function WelcomeVerifyPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Disabled —</SelectItem>
-                  {DEMO_TEXT_CHANNELS.map((c) => (
+                  {channels.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       # {c.name}
                     </SelectItem>
@@ -169,7 +203,7 @@ export default function WelcomeVerifyPage() {
                     v === '__none'
                       ? 'Cleared leave channel'
                       : `Set leave channel to #${
-                          DEMO_TEXT_CHANNELS.find((c) => c.id === v)?.name
+                          channels.find((c) => c.id === v)?.name
                         }`
                   )
                 }
@@ -180,13 +214,117 @@ export default function WelcomeVerifyPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Disabled —</SelectItem>
-                  {DEMO_TEXT_CHANNELS.map((c) => (
+                  {channels.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       # {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Card style customization */}
+            <div className="space-y-3 rounded-lg border border-border/60 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <Palette className="h-3.5 w-3.5" />
+                Card style
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Name shown</Label>
+                  <Select
+                    value={cardDraft.nameMode}
+                    onValueChange={(v) => {
+                      setCardDraft((d) => ({ ...d, nameMode: v as WelcomeCardConfig['nameMode'] }));
+                      setCardDraftDirty(true);
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nickname">Server nickname</SelectItem>
+                      <SelectItem value="username">Discord username</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Avatar position</Label>
+                  <Select
+                    value={cardDraft.avatarPosition}
+                    onValueChange={(v) => {
+                      setCardDraft((d) => ({ ...d, avatarPosition: v as WelcomeCardConfig['avatarPosition'] }));
+                      setCardDraftDirty(true);
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="left">Left</SelectItem>
+                      <SelectItem value="center">Center</SelectItem>
+                      <SelectItem value="right">Right</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Text alignment</Label>
+                  <Select
+                    value={cardDraft.textAlign}
+                    onValueChange={(v) => {
+                      setCardDraft((d) => ({ ...d, textAlign: v as WelcomeCardConfig['textAlign'] }));
+                      setCardDraftDirty(true);
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="left">Left</SelectItem>
+                      <SelectItem value="center">Center</SelectItem>
+                      <SelectItem value="right">Right</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Accent color</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ACCENT_PRESETS.map((hex) => (
+                      <button
+                        key={hex}
+                        type="button"
+                        onClick={() => {
+                          setCardDraft((d) => ({ ...d, accentColor: hex }));
+                          setCardDraftDirty(true);
+                        }}
+                        className={cn(
+                          'h-7 w-7 rounded-full border-2 transition-transform hover:scale-110',
+                          cardDraft.accentColor === hex ? 'border-foreground' : 'border-transparent'
+                        )}
+                        style={{ backgroundColor: hex }}
+                        title={hex}
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCardDraft((d) => ({ ...d, accentColor: null }));
+                        setCardDraftDirty(true);
+                      }}
+                      className={cn(
+                        'flex h-7 items-center rounded-full border px-2 text-[10px] text-muted-foreground',
+                        !cardDraft.accentColor ? 'border-foreground text-foreground' : 'border-border/60'
+                      )}
+                    >
+                      Default
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {cardDraftDirty && (
+                <Button size="sm" onClick={saveCardStyle} disabled={busy} className="w-full">
+                  Save card style
+                </Button>
+              )}
             </div>
 
             {/* Preview card — join / leave toggle */}
@@ -209,40 +347,35 @@ export default function WelcomeVerifyPage() {
                 ))}
               </div>
 
-              {/* Discord-style embed card */}
-              <div className={cn(
-                'overflow-hidden rounded-xl border-l-4 bg-[#1e1f2e]',
-                previewEvent === 'join' ? 'border-l-success' : 'border-l-chart-4'
-              )}>
-                <div className="flex flex-col items-center px-6 py-7 text-center">
-                  {/* Avatar */}
-                  <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-chart-4 to-primary text-2xl font-bold text-primary-foreground ring-4 ring-white/10">
-                    P
+              {/* Real card, rendered by the bot itself — not a mockup. Query
+                  string reflects the current draft so it updates live as you
+                  adjust the controls above, before you even save. */}
+              <div className="overflow-hidden rounded-xl border border-border/60 bg-[#1e1f2e] p-2">
+                {channelsError ? (
+                  <div className="flex h-40 flex-col items-center justify-center gap-1 text-center text-xs text-muted-foreground">
+                    <Mail className="h-4 w-4" />
+                    Bot unreachable — live preview needs the bot's HTTP
+                    connection configured (BOT_HTTP_URL on the dashboard).
                   </div>
-
-                  {/* Server nickname — large bold */}
-                  <p className="text-2xl font-bold tracking-tight text-white" style={{ fontFamily: 'Courier New, monospace' }}>
-                    PowUser
-                  </p>
-
-                  {/* Event label */}
-                  <p className="mt-1.5 text-sm font-medium text-[#a0a5b0]">
-                    {previewEvent === 'join' ? 'Joined' : 'Left'}
-                  </p>
-
-                  {/* Discord @username */}
-                  <p className="mt-0.5 text-xs text-[#7289da]">@pow_user</p>
-
-                  {/* Server join date */}
-                  <p className="mt-3 text-xs text-[#72767d]">
-                    Joined: January 15, 2024
-                  </p>
-                </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={`${previewEvent}-${JSON.stringify(cardDraft)}-${previewNonce}`}
+                    src={`/api/bot/guilds/${params.guildId}/welcome-preview?type=${
+                      previewEvent === 'join' ? 'welcome' : 'leave'
+                    }&nameMode=${cardDraft.nameMode}&accentColor=${encodeURIComponent(
+                      cardDraft.accentColor || ''
+                    )}&avatarPosition=${cardDraft.avatarPosition}&textAlign=${cardDraft.textAlign}`}
+                    alt={`${previewEvent === 'join' ? 'Welcome' : 'Leave'} card preview`}
+                    className="w-full rounded-lg"
+                    onError={() => setChannelsError('Preview failed to load — is the bot online?')}
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                 <CheckCircle2 className="h-3 w-3 text-success" />
-                Nickname shown if set, otherwise display name · @username always the Discord handle
+                This is the exact image the bot will post — rendered live, using your own Discord avatar and name.
               </div>
             </div>
 
@@ -251,7 +384,7 @@ export default function WelcomeVerifyPage() {
               Use <code className="rounded bg-muted px-1 py-0.5">/welcome test</code>{' '}
               and{' '}
               <code className="rounded bg-muted px-1 py-0.5">/welcome testleave</code>{' '}
-              in Discord to preview your own card.
+              in Discord to preview the same card there too.
             </div>
           </CardContent>
         </Card>
@@ -283,7 +416,7 @@ export default function WelcomeVerifyPage() {
                     { verify_role_id: v === '__none' ? null : v },
                     v === '__none'
                       ? 'Cleared verification role'
-                      : `Set verification role to @${DEMO_ROLES.find((r) => r.id === v)?.name}`
+                      : `Set verification role to @${roles.find((r) => r.id === v)?.name}`
                   )
                 }
                 disabled={busy}
@@ -293,7 +426,7 @@ export default function WelcomeVerifyPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Disabled —</SelectItem>
-                  {DEMO_ROLES.map((r) => (
+                  {roles.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       @ {r.name}
                     </SelectItem>
@@ -380,7 +513,7 @@ export default function WelcomeVerifyPage() {
                     { bot_control_role_id: v === '__none' ? null : v },
                     v === '__none'
                       ? 'Cleared bot control role'
-                      : `Set bot control role to @${DEMO_ROLES.find((r) => r.id === v)?.name}`
+                      : `Set bot control role to @${roles.find((r) => r.id === v)?.name}`
                   )
                 }
                 disabled={busy}
@@ -390,7 +523,7 @@ export default function WelcomeVerifyPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Server owner only —</SelectItem>
-                  {DEMO_ROLES.map((r) => (
+                  {roles.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       @ {r.name}
                     </SelectItem>
