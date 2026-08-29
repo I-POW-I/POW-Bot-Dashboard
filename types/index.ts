@@ -42,6 +42,13 @@ export interface LogChannels {
   modlog?: string;
 }
 
+export interface WelcomeCardConfig {
+  nameMode?: 'nickname' | 'username';
+  accentColor?: string | null;
+  avatarPosition?: 'left' | 'center' | 'right';
+  textAlign?: 'left' | 'center' | 'right';
+}
+
 export interface GuildConfig {
   guild_id: string;
   guild_name: string | null;
@@ -51,6 +58,7 @@ export interface GuildConfig {
   panel_message_id: string | null;
   welcome_channel_id: string | null;
   leave_channel_id: string | null;
+  welcome_card_config: WelcomeCardConfig;
   verify_role_id: string | null;
   verify_channel_id: string | null;
   verify_message_id: string | null;
