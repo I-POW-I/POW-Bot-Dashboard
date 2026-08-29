@@ -30,18 +30,34 @@ export default function GuildLayout({
     if (!loading && !user) router.replace('/');
   }, [user, loading, router]);
 
+  const [membershipChecked, setMembershipChecked] = useState(false);
+
   useEffect(() => {
     if (!user || !params?.guildId) return;
+    setConfigLoading(true);
+    setMembershipChecked(false);
+
     const membership = user.guilds.find((g) => g.guildId === params.guildId);
     if (!membership) {
       router.replace('/dashboard');
       return;
     }
+    setMembershipChecked(true);
+
+    let cancelled = false;
     (async () => {
       const c = await fetchGuildConfig(params.guildId);
+      // Guards against a slow fetch for a guild the user has already
+      // navigated away from resolving AFTER a newer one — without this,
+      // switching guilds quickly could show the wrong guild's config.
+      if (cancelled) return;
       setConfig(c);
       setConfigLoading(false);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, params?.guildId, router]);
 
   if (loading || !user) {
@@ -55,8 +71,22 @@ export default function GuildLayout({
     );
   }
 
-  const membership = user.guilds.find((g) => g.guildId === params?.guildId);
-  if (!membership) return null;
+  // Previously this checked `user.guilds.find(...)` directly at render time
+  // and returned `null` (a blank screen) whenever it didn't match — including
+  // transiently during route changes, which is exactly what was causing
+  // "click back / navigate and the page goes blank". Now we only trust the
+  // membership check once the effect above has actually confirmed it, and
+  // show a loading state in between rather than nothing.
+  if (!membershipChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Bot className="h-5 w-5 animate-pulse text-primary" />
+          <span>Loading server…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ResizablePanelGroup direction="horizontal" className="h-screen overflow-hidden bg-background">
