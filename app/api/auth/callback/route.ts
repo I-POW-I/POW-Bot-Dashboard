@@ -44,6 +44,20 @@ function avatarUrl(discordId: string, avatar: string | null): string {
   return `https://cdn.discordapp.com/avatars/${discordId}/${avatar}.${ext}`;
 }
 
+// Discord's permissions bitfield — ADMINISTRATOR (0x8) or MANAGE_GUILD (0x20).
+// Previously only the literal server *creator* (g.owner) was treated as
+// able to manage the bot here — a regular admin/manager of a server (not
+// its creator) got no guild_configs row at all, which is why their server
+// name/icon never populated on the dashboard.
+function canManageGuild(permissions: string): boolean {
+  try {
+    const bits = BigInt(permissions);
+    return (bits & BigInt(0x8)) !== BigInt(0) || (bits & BigInt(0x20)) !== BigInt(0);
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get('code');
@@ -163,7 +177,10 @@ export async function GET(req: NextRequest) {
   const guildMemberRows = userGuilds.map((g) => ({
     user_id: supabaseUserId,
     guild_id: g.id,
-    role: (g.owner ? 'owner' : 'viewer') as 'owner' | 'viewer',
+    role: (g.owner ? 'owner' : canManageGuild(g.permissions) ? 'admin' : 'viewer') as
+      | 'owner'
+      | 'admin'
+      | 'viewer',
   }));
 
   if (guildMemberRows.length > 0) {
@@ -173,9 +190,9 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const ownedGuilds = userGuilds.filter((g) => g.owner);
-  if (ownedGuilds.length > 0) {
-    const configRows = ownedGuilds.map((g) => ({
+  const manageableGuilds = userGuilds.filter((g) => g.owner || canManageGuild(g.permissions));
+  if (manageableGuilds.length > 0) {
+    const configRows = manageableGuilds.map((g) => ({
       guild_id: g.id,
       guild_name: g.name,
       guild_icon: g.icon
@@ -184,9 +201,15 @@ export async function GET(req: NextRequest) {
       joined_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
+    // ignoreDuplicates was previously true, which meant that if a
+    // guild_configs row already existed (e.g. created by the bot itself,
+    // which only ever sets welcome_channel_id/leave_channel_id — never
+    // name/icon), this upsert silently did nothing and name/icon stayed
+    // null forever. false (the default) means it actually updates them on
+    // every sign-in, keeping name/icon in sync with Discord.
     await sb.from('guild_configs').upsert(configRows, {
       onConflict: 'guild_id',
-      ignoreDuplicates: true,
+      ignoreDuplicates: false,
     });
   }
 
