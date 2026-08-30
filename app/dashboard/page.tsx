@@ -26,13 +26,27 @@ export default function DashboardIndex() {
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
     (async () => {
-      const configs = await Promise.all(
-        user.guilds.map((g) => fetchGuildConfig(g.guildId))
-      );
-      setGuilds(configs.filter(Boolean) as GuildConfig[]);
-      setLoadingGuilds(false);
+      try {
+        // Promise.allSettled, not Promise.all — one guild's config fetch
+        // throwing previously meant NONE of them resolved, leaving
+        // loadingGuilds stuck true forever (the skeleton loader spinning
+        // indefinitely, which looked like blank/broken cards).
+        const results = await Promise.allSettled(
+          user.guilds.map((g) => fetchGuildConfig(g.guildId))
+        );
+        if (cancelled) return;
+        const configs = results
+          .filter((r): r is PromiseFulfilledResult<GuildConfig | null> => r.status === 'fulfilled')
+          .map((r) => r.value)
+          .filter(Boolean) as GuildConfig[];
+        setGuilds(configs);
+      } finally {
+        if (!cancelled) setLoadingGuilds(false);
+      }
     })();
+    return () => { cancelled = true; };
   }, [user]);
 
   if (loading || !user) {
