@@ -55,8 +55,10 @@ export default function OwnerControlsPage() {
   const [savingPresence, setSavingPresence] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    const load = async () => {
       const s = await fetchBotStatus();
+      if (cancelled) return;
       setStatus(s);
       if (s?.presence_list?.length) {
         setPresences(s.presence_list);
@@ -65,7 +67,19 @@ export default function OwnerControlsPage() {
         setPresences([{ type: (s.presence_type as DashboardPresence['type']) || 'Custom', text: s.presence_activity }]);
       }
       if (s?.presence_mode) setPresenceMode(s.presence_mode);
-    })();
+    };
+
+    load();
+    // The "Streaming" badge below claims this data is live — previously it
+    // was a single one-time fetch on mount, so a transient fetch failure
+    // (or just viewing this page before the bot's first heartbeat landed)
+    // displayed stale/empty data indefinitely with no way to recover short
+    // of a manual page refresh. Polling means it self-heals within 15s.
+    const interval = setInterval(load, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   const restart = async () => {
@@ -207,7 +221,7 @@ export default function OwnerControlsPage() {
                 <div>
                   <div className="text-xs text-muted-foreground">Memory</div>
                   <div className="font-semibold text-foreground">
-                    {status?.memory_mb.toFixed(1) ?? '—'} MB
+                    {status?.memory_mb?.toFixed(1) ?? '—'} MB
                   </div>
                 </div>
               </div>
@@ -381,7 +395,7 @@ export default function OwnerControlsPage() {
                 <Cpu className="h-3.5 w-3.5" /> Memory
               </div>
               <div className="mt-1 text-lg font-semibold text-foreground">
-                {status?.memory_mb.toFixed(1) ?? '—'} MB
+                {status?.memory_mb?.toFixed(1) ?? '—'} MB
               </div>
             </div>
           </div>
