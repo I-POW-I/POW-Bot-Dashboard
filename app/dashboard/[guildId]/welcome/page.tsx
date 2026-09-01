@@ -28,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
+import { requestFromBot, BotRequestError } from '@/lib/bot-request';
 
 interface RealChannel { id: string; name: string; position: number }
 interface RealRole { id: string; name: string; color: string; position: number }
@@ -59,20 +60,17 @@ export default function WelcomeVerifyPage() {
     textAlign: 'center',
   });
   const [cardDraftDirty, setCardDraftDirty] = useState(false);
-  const [previewNonce, setPreviewNonce] = useState(0);
+
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || !params?.guildId) return;
     (async () => {
-      const [c, chRes, roleRes] = await Promise.all([
-        fetchGuildConfig(params.guildId),
-        fetch(`/api/bot/guilds/${params.guildId}/channels`).then((r) => r.json()).catch(() => ({ channels: [], error: 'Request failed' })),
-        fetch(`/api/bot/guilds/${params.guildId}/roles`).then((r) => r.json()).catch(() => ({ roles: [], error: 'Request failed' })),
-      ]);
+      const c = await fetchGuildConfig(params.guildId);
       setConfig(c);
-      setChannels(chRes.channels || []);
-      setRoles(roleRes.roles || []);
-      setChannelsError(chRes.error || roleRes.error || null);
       if (c?.welcome_card_config && Object.keys(c.welcome_card_config).length) {
         setCardDraft({
           nameMode: c.welcome_card_config.nameMode || 'nickname',
@@ -84,6 +82,31 @@ export default function WelcomeVerifyPage() {
       setLoading(false);
     })();
   }, [user, params?.guildId]);
+
+  useEffect(() => {
+    if (!params?.guildId) return;
+    // Channels/roles go through the bot's command queue (a few seconds of
+    // latency, since the bot only polls every 15s) — kept separate from the
+    // main page load above so the rest of the page isn't stuck waiting on it.
+    (async () => {
+      setChannelsLoading(true);
+      setChannelsError(null);
+      try {
+        const [chResult, roleResult] = await Promise.all([
+          requestFromBot<{ channels: RealChannel[] }>(params.guildId, 'fetch_channels'),
+          requestFromBot<{ roles: RealRole[] }>(params.guildId, 'fetch_roles'),
+        ]);
+        setChannels(chResult.channels || []);
+        setRoles(roleResult.roles || []);
+      } catch (err) {
+        setChannelsError(
+          err instanceof BotRequestError ? err.message : 'Could not reach the bot'
+        );
+      } finally {
+        setChannelsLoading(false);
+      }
+    })();
+  }, [params?.guildId]);
 
   const updateConfig = async (updates: Partial<GuildConfig>, logAction?: string) => {
     if (!config || !params?.guildId || !user) return false;
@@ -124,6 +147,24 @@ export default function WelcomeVerifyPage() {
     }
   };
 
+  const generatePreview = async () => {
+    if (!params?.guildId) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const result = await requestFromBot<{ image_base64: string }>(
+        params.guildId,
+        'render_preview',
+        { type: previewEvent === 'join' ? 'welcome' : 'leave', cardConfig: cardDraft }
+      );
+      setPreviewImage(`data:image/png;base64,${result.image_base64}`);
+    } catch (err) {
+      setPreviewError(err instanceof BotRequestError ? err.message : 'Could not generate preview');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -160,12 +201,25 @@ export default function WelcomeVerifyPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {channelsLoading ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Sparkles className="h-3 w-3 animate-pulse" />
+                Asking the bot for your server's real channels/roles…
+              </div>
+            ) : channelsError ? (
+              <div className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+                <Mail className="h-3 w-3" />
+                {channelsError}
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Welcome channel
               </Label>
               <Select
                 value={config?.welcome_channel_id || '__none'}
+                disabled={busy || channelsLoading}
                 onValueChange={(v) =>
                   updateConfig(
                     { welcome_channel_id: v === '__none' ? null : v },
@@ -176,7 +230,6 @@ export default function WelcomeVerifyPage() {
                         }`
                   )
                 }
-                disabled={busy}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a channel…" />
@@ -207,7 +260,7 @@ export default function WelcomeVerifyPage() {
                         }`
                   )
                 }
-                disabled={busy}
+                disabled={busy || channelsLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Defaults to welcome channel…" />
@@ -329,47 +382,57 @@ export default function WelcomeVerifyPage() {
 
             {/* Preview card — join / leave toggle */}
             <div className="space-y-3">
-              <div className="flex gap-1">
-                {(['join', 'leave'] as const).map((ev) => (
-                  <button
-                    key={ev}
-                    type="button"
-                    onClick={() => setPreviewEvent(ev)}
-                    className={cn(
-                      'rounded px-3 py-1 text-xs font-medium transition-colors',
-                      previewEvent === ev
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {ev === 'join' ? 'Join preview' : 'Leave preview'}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between">
+                <div className="flex gap-1">
+                  {(['join', 'leave'] as const).map((ev) => (
+                    <button
+                      key={ev}
+                      type="button"
+                      onClick={() => { setPreviewEvent(ev); setPreviewImage(null); }}
+                      className={cn(
+                        'rounded px-3 py-1 text-xs font-medium transition-colors',
+                        previewEvent === ev
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {ev === 'join' ? 'Join preview' : 'Leave preview'}
+                    </button>
+                  ))}
+                </div>
+                <Button size="sm" variant="outline" onClick={generatePreview} disabled={previewLoading}>
+                  {previewLoading ? 'Generating…' : 'Generate preview'}
+                </Button>
               </div>
 
-              {/* Real card, rendered by the bot itself — not a mockup. Query
-                  string reflects the current draft so it updates live as you
-                  adjust the controls above, before you even save. */}
-              <div className="overflow-hidden rounded-xl border border-border/60 bg-[#1e1f2e] p-2">
-                {channelsError ? (
-                  <div className="flex h-40 flex-col items-center justify-center gap-1 text-center text-xs text-muted-foreground">
-                    <Mail className="h-4 w-4" />
-                    Bot unreachable — live preview needs the bot's HTTP
-                    connection configured (BOT_HTTP_URL on the dashboard).
+              {/* Real card, rendered by the bot itself using generateCard() —
+                  not a mockup. Generation goes through the bot's command
+                  queue (it has no direct network address on Discloud), so
+                  it takes a few seconds rather than updating instantly as
+                  you type — hence the explicit button instead of a live
+                  auto-refreshing image. */}
+              <div className="flex min-h-[180px] items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-[#1e1f2e] p-2">
+                {previewLoading ? (
+                  <div className="flex flex-col items-center gap-2 text-center text-xs text-muted-foreground">
+                    <Sparkles className="h-4 w-4 animate-pulse" />
+                    Asking the bot to render this — usually takes 5–15s.
                   </div>
-                ) : (
+                ) : previewError ? (
+                  <div className="flex flex-col items-center gap-1 px-4 text-center text-xs text-muted-foreground">
+                    <Mail className="h-4 w-4" />
+                    {previewError}
+                  </div>
+                ) : previewImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    key={`${previewEvent}-${JSON.stringify(cardDraft)}-${previewNonce}`}
-                    src={`/api/bot/guilds/${params.guildId}/welcome-preview?type=${
-                      previewEvent === 'join' ? 'welcome' : 'leave'
-                    }&nameMode=${cardDraft.nameMode}&accentColor=${encodeURIComponent(
-                      cardDraft.accentColor || ''
-                    )}&avatarPosition=${cardDraft.avatarPosition}&textAlign=${cardDraft.textAlign}`}
+                    src={previewImage}
                     alt={`${previewEvent === 'join' ? 'Welcome' : 'Leave'} card preview`}
                     className="w-full rounded-lg"
-                    onError={() => setChannelsError('Preview failed to load — is the bot online?')}
                   />
+                ) : (
+                  <div className="px-4 text-center text-xs text-muted-foreground">
+                    Click &ldquo;Generate preview&rdquo; to see the real card with your current settings.
+                  </div>
                 )}
               </div>
 
@@ -419,7 +482,7 @@ export default function WelcomeVerifyPage() {
                       : `Set verification role to @${roles.find((r) => r.id === v)?.name}`
                   )
                 }
-                disabled={busy}
+                disabled={busy || channelsLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a role…" />
@@ -516,7 +579,7 @@ export default function WelcomeVerifyPage() {
                       : `Set bot control role to @${roles.find((r) => r.id === v)?.name}`
                   )
                 }
-                disabled={busy}
+                disabled={busy || channelsLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Defaults to server owner…" />
