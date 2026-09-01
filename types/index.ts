@@ -359,44 +359,6 @@ export interface ReactionRole {
   position: number;
 }
 
-export type TicketButtonStyle = 'primary' | 'secondary' | 'success' | 'danger';
-
-export interface TicketConfig {
-  id: string;
-  guild_id: string;
-  enabled: boolean;
-  category_id: string | null;
-  support_role_id: string | null;
-  log_channel_id: string | null;
-  welcome_message: string | null;
-  max_open_tickets: number;
-  auto_close_hours: number;
-  claim_button: boolean;
-  close_button: boolean;
-  transcript_on_close: boolean;
-  button_label: string;
-  button_emoji: string | null;
-  button_style: TicketButtonStyle;
-}
-
-export type WebhookType = 'custom' | 'twitch' | 'youtube' | 'github' | 'rss';
-
-export interface WebhookConfig {
-  id: string;
-  guild_id: string;
-  name: string;
-  webhook_url: string;
-  channel_id: string | null;
-  avatar_url: string | null;
-  username: string | null;
-  type: WebhookType;
-  trigger_config: Record<string, unknown> | null;
-  enabled: boolean;
-  last_triggered_at: string | null;
-  total_sent: number;
-  created_at: string;
-}
-
 export const APP_ROLE_LABELS: Record<AppRole, string> = {
   super_admin: 'Super Admin',
   admin: 'Admin',
