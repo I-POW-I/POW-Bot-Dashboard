@@ -8,6 +8,7 @@ import {
   Bot,
   Clock,
   Headphones,
+  Loader2,
   Radio,
   Shield,
   Sparkles,
@@ -123,8 +124,19 @@ export default function Home() {
               disabled={signingIn || loading}
               className="gap-2"
             >
-              {signingIn ? 'Signing in…' : 'Sign in with Discord'}
-              <ArrowRight className="h-4 w-4" />
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading…
+                </>
+              ) : signingIn ? (
+                'Signing in…'
+              ) : (
+                <>
+                  Sign in with Discord
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
             </Button>
           </div>
         </nav>
@@ -165,8 +177,19 @@ export default function Home() {
                 disabled={signingIn || loading}
                 className="h-12 gap-2 px-8 text-base shadow-lg shadow-primary/20"
               >
-                {signingIn ? 'Connecting…' : 'Open Dashboard'}
-                <ArrowRight className="h-5 w-5" />
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Loading…
+                  </>
+                ) : signingIn ? (
+                  'Connecting…'
+                ) : (
+                  <>
+                    Open Dashboard
+                    <ArrowRight className="h-5 w-5" />
+                  </>
+                )}
               </Button>
               <span className="text-sm text-muted-foreground">
                 Sign in with the Discord account that manages your server.
