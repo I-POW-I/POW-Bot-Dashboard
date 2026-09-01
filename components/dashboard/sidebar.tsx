@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   Clock,
   LayoutDashboard,
-  LifeBuoy,
   LogOut,
   Radio,
   Settings,
@@ -20,7 +19,6 @@ import {
   Terminal,
   Users,
   Volume2,
-  Webhook,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/providers/auth-provider';
@@ -48,8 +46,6 @@ const GUILD_NAV_ITEMS: NavItem[] = [
   { href: (g) => `/dashboard/${g}/automod`, label: 'Auto-Moderation', icon: ShieldAlert, feature: 'automod' },
   { href: (g) => `/dashboard/${g}/commands`, label: 'Custom Commands', icon: Terminal, feature: 'commands' },
   { href: (g) => `/dashboard/${g}/reaction-roles`, label: 'Reaction Roles', icon: Tags, feature: 'reaction-roles' },
-  { href: (g) => `/dashboard/${g}/tickets`, label: 'Tickets', icon: LifeBuoy, feature: 'tickets' },
-  { href: (g) => `/dashboard/${g}/webhooks`, label: 'Webhooks', icon: Webhook, feature: 'webhooks' },
   { href: (g) => `/dashboard/${g}/logging`, label: 'Log Channels', icon: Activity, feature: 'logging' },
   { href: (g) => `/dashboard/${g}/welcome`, label: 'Welcome & Verify', icon: ShieldCheck, feature: 'welcome' },
   { href: (g) => `/dashboard/${g}/streamers`, label: 'Streamer Alerts', icon: Radio, feature: 'streamers' },
