@@ -49,12 +49,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Safety fallback — if INITIAL_SESSION never fires within 4s, unblock the UI
+    // Safety fallback — if INITIAL_SESSION never fires within 1.5s, unblock
+    // the UI. INITIAL_SESSION normally fires almost immediately (it's a
+    // local storage read, not a network round-trip in the common case), so
+    // this is a worst-case ceiling, not the typical wait — 4s was making a
+    // rare edge case the default experience for the "Sign in" button.
     const timeout = setTimeout(() => {
       if (mounted) {
         setLoading(false);
       }
-    }, 4000);
+    }, 1500);
 
     return () => {
       mounted = false;
