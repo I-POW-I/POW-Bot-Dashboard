@@ -78,7 +78,6 @@ const INTEGRATIONS = [
   { key: 'kick', label: 'Kick API', description: 'Streamer alerts' },
   { key: 'youtube', label: 'YouTube Data API', description: 'Streamer alerts' },
   { key: 'steam', label: 'Steam Web API', description: 'Free game alerts' },
-  { key: 'webhooks', label: 'Webhooks', description: 'Outgoing notification webhooks' },
 ];
 
 export default function SettingsPage() {
