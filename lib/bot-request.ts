@@ -1,3 +1,5 @@
+import { authedFetch } from '@/lib/authed-fetch';
+
 /**
  * Enqueues a request for the bot to fulfil (channels, roles, a welcome-card
  * preview) and polls for the result. The bot has no public network address
@@ -18,7 +20,7 @@ export async function requestFromBot<T = unknown>(
   command: 'fetch_channels' | 'fetch_roles' | 'render_preview',
   payload?: Record<string, unknown>
 ): Promise<T> {
-  const enqueueRes = await fetch(`/api/bot/guilds/${guildId}/request`, {
+  const enqueueRes = await authedFetch(`/api/bot/guilds/${guildId}/request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, payload }),
@@ -31,7 +33,7 @@ export async function requestFromBot<T = unknown>(
   const startedAt = Date.now();
   while (Date.now() - startedAt < TIMEOUT_MS) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    const res = await fetch(`/api/bot/commands/${enqueued.id}`);
+    const res = await authedFetch(`/api/bot/commands/${enqueued.id}`);
     const body = await res.json();
     if (!res.ok) throw new BotRequestError(body.error || 'Failed to check request status');
 
