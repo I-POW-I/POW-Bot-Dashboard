@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   Cpu,
@@ -53,6 +53,15 @@ export default function OwnerControlsPage() {
   const [presenceMode, setPresenceMode] = useState<'rotate' | 'fixed'>('rotate');
   const [restarting, setRestarting] = useState(false);
   const [savingPresence, setSavingPresence] = useState(false);
+  // The 15s poll below refreshes live metrics, but it was ALSO overwriting
+  // whatever the user was actively editing in the presence form — if you
+  // picked "Watching", typed text, and took more than 15s to hit "Update
+  // presence", the poll would silently reset your selection back to
+  // whatever was last saved (defaulting to Custom). This ref stops the
+  // poll from touching the form while there are unsaved local edits. A ref
+  // (not state) so the polling closure below always reads the current
+  // value without needing the effect to depend on it and re-run.
+  const presencesDirtyRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,13 +69,15 @@ export default function OwnerControlsPage() {
       const s = await fetchBotStatus();
       if (cancelled) return;
       setStatus(s);
-      if (s?.presence_list?.length) {
-        setPresences(s.presence_list);
-      } else if (s?.presence_activity) {
-        // Fall back to the old single-presence columns if no list has been set yet.
-        setPresences([{ type: (s.presence_type as DashboardPresence['type']) || 'Custom', text: s.presence_activity }]);
+      if (!presencesDirtyRef.current) {
+        if (s?.presence_list?.length) {
+          setPresences(s.presence_list);
+        } else if (s?.presence_activity) {
+          // Fall back to the old single-presence columns if no list has been set yet.
+          setPresences([{ type: (s.presence_type as DashboardPresence['type']) || 'Custom', text: s.presence_activity }]);
+        }
+        if (s?.presence_mode) setPresenceMode(s.presence_mode);
       }
-      if (s?.presence_mode) setPresenceMode(s.presence_mode);
     };
 
     load();
@@ -113,15 +124,18 @@ export default function OwnerControlsPage() {
   };
 
   const updatePresenceSlot = (index: number, patch: Partial<DashboardPresence>) => {
+    presencesDirtyRef.current = true;
     setPresences((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
   };
 
   const addPresenceSlot = () => {
     if (presences.length >= MAX_PRESENCES) return;
+    presencesDirtyRef.current = true;
     setPresences((prev) => [...prev, { ...EMPTY_PRESENCE }]);
   };
 
   const removePresenceSlot = (index: number) => {
+    presencesDirtyRef.current = true;
     setPresences((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -158,6 +172,7 @@ export default function OwnerControlsPage() {
       toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
       return;
     }
+    presencesDirtyRef.current = false;
     if (user) {
       await insertAuditLog({
         guild_id: 'global',
@@ -263,7 +278,7 @@ export default function OwnerControlsPage() {
               </Label>
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => setPresenceMode('rotate')}
+                  onClick={() => { presencesDirtyRef.current = true; setPresenceMode('rotate'); }}
                   className={cn(
                     'rounded-lg border px-3 py-2 text-xs font-medium transition-all',
                     presenceMode === 'rotate'
@@ -274,7 +289,7 @@ export default function OwnerControlsPage() {
                   Add to rotation
                 </button>
                 <button
-                  onClick={() => setPresenceMode('fixed')}
+                  onClick={() => { presencesDirtyRef.current = true; setPresenceMode('fixed'); }}
                   className={cn(
                     'rounded-lg border px-3 py-2 text-xs font-medium transition-all',
                     presenceMode === 'fixed'
