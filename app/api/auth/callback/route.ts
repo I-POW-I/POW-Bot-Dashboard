@@ -198,7 +198,13 @@ export async function GET(req: NextRequest) {
       guild_icon: g.icon
         ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png`
         : null,
-      joined_at: new Date().toISOString(),
+      // joined_at intentionally NOT set here — it means "when the bot
+      // joined this guild", not "when this admin last signed into the
+      // dashboard". It was being stamped fresh on every sign-in, which is
+      // why the owner panel's server list showed "Joined just now" for
+      // every single server regardless of how long the bot had actually
+      // been there. The bot itself is the only thing that should ever set
+      // this field.
       updated_at: new Date().toISOString(),
     }));
     // ignoreDuplicates was previously true, which meant that if a
