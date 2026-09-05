@@ -42,8 +42,14 @@ const PRESENCE_TYPES = [
   { value: 'Custom', label: 'Custom', icon: Mic },
 ];
 
+const DISCORD_STATUSES: { value: 'online' | 'idle' | 'dnd'; label: string; dot: string }[] = [
+  { value: 'online', label: 'Online', dot: 'bg-success' },
+  { value: 'idle', label: 'Idle', dot: 'bg-warning' },
+  { value: 'dnd', label: 'Do Not Disturb', dot: 'bg-destructive' },
+];
+
 const MAX_PRESENCES = 3;
-const EMPTY_PRESENCE: DashboardPresence = { type: 'Custom', text: '' };
+const EMPTY_PRESENCE: DashboardPresence = { type: 'Custom', text: '', discordStatus: 'online' };
 
 export default function OwnerControlsPage() {
   const { user } = useAuth();
@@ -343,6 +349,26 @@ export default function OwnerControlsPage() {
                     onChange={(e) => updatePresenceSlot(i, { text: e.target.value })}
                     placeholder="🔊 POW Lounge · 14h 22m"
                   />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Status</span>
+                    {DISCORD_STATUSES.map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        onClick={() => updatePresenceSlot(i, { discordStatus: s.value })}
+                        title={s.label}
+                        className={cn(
+                          'flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-all',
+                          (p.discordStatus || 'online') === s.value
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border/60 text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <span className={cn('h-1.5 w-1.5 rounded-full', s.dot)} />
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
