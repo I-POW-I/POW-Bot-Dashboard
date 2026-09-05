@@ -26,15 +26,31 @@ export default function OwnerOverview() {
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
     (async () => {
-      const [s, ...guildConfigs] = await Promise.all([
-        fetchBotStatus(),
-        ...user.guilds.map((g) => fetchGuildConfig(g.guildId)),
-      ]);
+      const s = await fetchBotStatus();
+      if (cancelled) return;
       setStatus(s);
-      setGuilds(guildConfigs.filter(Boolean) as GuildConfig[]);
+
+      // Previously this listed EVERY server the logged-in admin can manage
+      // on Discord (user.guilds) and labelled it "servers the bot is in" —
+      // those aren't the same list. Filter down to guilds the bot actually
+      // reports being in via its heartbeat.
+      const botGuildIds = new Set(s?.guild_ids || []);
+      const relevantGuilds = user.guilds.filter((g) => botGuildIds.has(g.guildId));
+
+      const results = await Promise.allSettled(
+        relevantGuilds.map((g) => fetchGuildConfig(g.guildId))
+      );
+      if (cancelled) return;
+      const configs = results
+        .filter((r): r is PromiseFulfilledResult<GuildConfig | null> => r.status === 'fulfilled')
+        .map((r) => r.value)
+        .filter(Boolean) as GuildConfig[];
+      setGuilds(configs);
       setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, [user]);
 
   if (loading) {
