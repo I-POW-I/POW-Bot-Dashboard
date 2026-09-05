@@ -49,16 +49,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Safety fallback — if INITIAL_SESSION never fires within 1.5s, unblock
-    // the UI. INITIAL_SESSION normally fires almost immediately (it's a
-    // local storage read, not a network round-trip in the common case), so
-    // this is a worst-case ceiling, not the typical wait — 4s was making a
-    // rare edge case the default experience for the "Sign in" button.
+    // Safety fallback — if INITIAL_SESSION never fires within 5s, unblock
+    // the UI. This was previously shortened to 1.5s as a UX polish for the
+    // landing page buttons, but that raced against the magic-link login
+    // flow's own token verification round-trip (see the comment above —
+    // this flow processes tokens from the URL hash, which involves a real
+    // network call to Supabase, not just a local storage read). If that
+    // took longer than 1.5s, this timeout fired first with no user yet,
+    // which could bounce a freshly-logged-in person back to the landing
+    // page before their real session was ever read — very plausibly the
+    // cause of "have to log in again on every refresh". 5s is a safer
+    // worst-case ceiling that doesn't fight the login flow itself.
     const timeout = setTimeout(() => {
       if (mounted) {
         setLoading(false);
       }
-    }, 1500);
+    }, 5000);
 
     return () => {
       mounted = false;
