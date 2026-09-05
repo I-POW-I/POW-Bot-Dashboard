@@ -145,6 +145,8 @@ export interface BlacklistEntry {
 export interface DashboardPresence {
   type: 'Playing' | 'Watching' | 'Listening' | 'Custom';
   text: string;
+  /** Discord status shown while this presence is active. Defaults to 'online' if omitted. */
+  discordStatus?: 'online' | 'idle' | 'dnd';
 }
 
 export interface BotStatus {
@@ -156,6 +158,7 @@ export interface BotStatus {
   active_connections: number;
   total_guilds: number;
   total_members: number;
+  guild_ids: string[];
   presence_activity: string | null;
   presence_type: string | null;
   presence_mode: 'rotate' | 'fixed';
