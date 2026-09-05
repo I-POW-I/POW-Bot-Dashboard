@@ -59,6 +59,7 @@ export default function OwnerControlsPage() {
   const [presenceMode, setPresenceMode] = useState<'rotate' | 'fixed'>('rotate');
   const [restarting, setRestarting] = useState(false);
   const [savingPresence, setSavingPresence] = useState(false);
+  const [clearingPresence, setClearingPresence] = useState(false);
   // The 15s poll below refreshes live metrics, but it was ALSO overwriting
   // whatever the user was actively editing in the presence form — if you
   // picked "Watching", typed text, and took more than 15s to hit "Update
@@ -192,6 +193,45 @@ export default function OwnerControlsPage() {
     toast({ title: 'Presence updated', description: 'The bot will apply this within 15 seconds.' });
   };
 
+  const clearPresence = async () => {
+    setClearingPresence(true);
+
+    const { error: cmdError } = await supabase.from('bot_commands').insert({
+      guild_id: 'global',
+      command: 'clear_presence',
+      payload: {},
+      status: 'pending',
+    });
+
+    // Mirror immediately so the "Currently active" box updates without
+    // waiting on the bot's poll — the bot's own heartbeat will also report
+    // this once it processes the command, keeping both in sync either way.
+    const { error: statusError } = await supabase
+      .from('bot_status')
+      .update({ presence_mode: 'rotate', presence_list: [], updated_at: new Date().toISOString() })
+      .eq('id', 1);
+
+    setClearingPresence(false);
+
+    const error = cmdError || statusError;
+    if (error) {
+      toast({ title: 'Clear failed', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setStatus((prev) => (prev ? { ...prev, presence_mode: 'rotate', presence_list: [] } : prev));
+    if (user) {
+      await insertAuditLog({
+        guild_id: 'global',
+        actor_discord_id: user.discordId,
+        actor_username: user.username,
+        action: 'Cleared custom presence (reset to normal rotation)',
+        category: 'presence',
+        details: {},
+      });
+    }
+    toast({ title: 'Presence cleared', description: 'Back to normal automatic rotation within 15 seconds.' });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -278,6 +318,50 @@ export default function OwnerControlsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Ground truth from the bot's own heartbeat — separate from
+                the editable draft below, so you can always see what's
+                actually live before changing anything. */}
+            <div className="rounded-lg border border-border/60 bg-background-elevated/40 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Currently active
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={clearPresence}
+                  disabled={clearingPresence || (!status?.presence_list?.length)}
+                  className="h-6 gap-1 px-2 text-[11px]"
+                >
+                  {clearingPresence ? 'Clearing…' : 'Clear (reset to normal rotation)'}
+                </Button>
+              </div>
+              {status?.presence_list?.length ? (
+                <div className="space-y-1">
+                  <p className="text-[11px] text-muted-foreground">
+                    Mode: <span className="text-foreground">{status.presence_mode === 'fixed' ? 'Only these' : 'Blended into rotation'}</span>
+                  </p>
+                  {status.presence_list.map((p, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-xs">
+                      <span className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        DISCORD_STATUSES.find((s) => s.value === (p.discordStatus || 'online'))?.dot
+                      )} />
+                      <span className="text-muted-foreground">{p.type}:</span>
+                      <span>{p.text}</span>
+                    </div>
+                  ))}
+                  <p className="pt-1 text-[10px] text-muted-foreground">
+                    Persists until you clear it, change it, or the bot restarts.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Nothing custom set — the bot is running its normal automatic rotation (active VCs / member count).
+                </p>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Mode
