@@ -37,6 +37,12 @@ export const supabase: SupabaseClient = new Proxy(
           auth: {
             persistSession: true,
             autoRefreshToken: true,
+            // Explicit rather than relying on the SDK default — this is
+            // what actually reads the magic-link session tokens out of the
+            // URL hash after the Discord OAuth redirect and stores them
+            // for future page loads. Without this working correctly, every
+            // page load looks like a fresh, logged-out visit.
+            detectSessionInUrl: true,
           },
         });
       }
